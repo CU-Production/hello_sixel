@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <string>
 #include <format>
-#include <windows.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -129,12 +128,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error loading image: %s\n", stbi_failure_reason());
         return 1;
     }
-
-    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
-    CONSOLE_SCREEN_BUFFER_INFO bufferInfo;
-    GetConsoleScreenBufferInfo(output, &bufferInfo);
-//    SetConsoleCursorPosition(output, {0, 0});
-    SetConsoleCursorPosition(output, bufferInfo.dwCursorPosition);
 
     generate_palette(img, width, height, channels);
 
