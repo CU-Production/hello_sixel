@@ -1,14 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
+#include <string>
+#include <format>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-//#define SIXEL_START "\033P0;0;0q"
-#define SIXEL_START "\033Pq"
-#define SIXEL_END "\033\\"
+#define SIXEL_START "\x1bP0;0;8q"
+//#define SIXEL_START "\x1bPq"
+#define SIXEL_END "\x1b\\"
 #define MAX_COLORS 256
 
 typedef struct {
@@ -79,10 +80,12 @@ void encode_sixel(unsigned char *img, int width, int height, int channels) {
     }
 
     for (int y = 0; y < height; y += 6) {
+        std::string band_height_str;
+
         int band_height = (height - y) < 6 ? (height - y) : 6;
 
         for (int c = 0; c < palette_size; c++) {
-            printf("#%d", c);
+            band_height_str += std::format("#{:d}", c);
 
             for (int x = 0; x < width; x++) {
                 uint8_t sixel_byte = 0;
@@ -102,16 +105,12 @@ void encode_sixel(unsigned char *img, int width, int height, int channels) {
                     }
                 }
 
-//                if (sixel_byte != 0) {
-//                    putchar(sixel_byte + 0x3F);
-//                } else {
-//                    putchar(0x3F);
-//                }
-                putchar(sixel_byte + 0x3F);
+                band_height_str += char(sixel_byte + 0x3F);
             }
-            printf("$");
+            band_height_str += "$";
         }
-        printf("-");
+        band_height_str += "-";
+        printf(band_height_str.c_str());
     }
 
     printf(SIXEL_END);
