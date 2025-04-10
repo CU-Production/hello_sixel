@@ -3,21 +3,21 @@
 #include <chrono>
 #include <string>
 #include <format>
+#include <windows.h>
 
-#include "ftxui/component/component.hpp"
-#include "ftxui/component/screen_interactive.hpp"
-#include "ftxui/dom/canvas.hpp"
-#include "ftxui/dom/elements.hpp"
-#include "ftxui/dom/node.hpp"
-#include "ftxui/screen/screen.hpp"
-#include "ftxui/screen/color.hpp"
+//#include "ftxui/component/component.hpp"
+//#include "ftxui/component/screen_interactive.hpp"
+//#include "ftxui/dom/canvas.hpp"
+//#include "ftxui/dom/elements.hpp"
+//#include "ftxui/dom/node.hpp"
+//#include "ftxui/screen/screen.hpp"
+//#include "ftxui/screen/color.hpp"
 
 #include "NES.h"
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
-#define SIXEL_START "\x1bP0;0;8q"
-//#define SIXEL_START "\x1bPq"
+#define SIXEL_START "\x1bPq"
 #define SIXEL_END "\x1b\\"
 #define MAX_COLORS 256
 
@@ -182,36 +182,16 @@ int main(int argc, const char* argv[]) {
         return EXIT_FAILURE;
     }
 
+    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO bufferInfo;
+    GetConsoleScreenBufferInfo(output, &bufferInfo);
+
     // input
     uint8_t controller1 = 0;
 
-    //    while(true) {
-//        std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
-//        dt = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(time - prev_time).count()) / 1000.0f;
-//        prev_time = time;
-//
-//        // processe input
-//        nes->controller1->buttons = controller1;
-//        nes->controller2->buttons = 0;
-//
-//        // step the NES state forward by 'dt' seconds, or more if in fast-forward
-//        emulate(nes, dt);
-//
-//        unsigned char* image = (unsigned char*)nes->ppu->front;
-//        generate_palette(image, nes_width, nes_height, 4);
-//        std::string result = encode_sixel(image, nes_width, nes_height, 4);
-//        printf(result.c_str());
-//
-//        using namespace std::chrono_literals;
-//        std::this_thread::sleep_for(1.0s / 120.0);// NOLINT magic numbers
-//    }
-
-
-    using namespace ftxui;
-
     double dt = 0;
     std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> prev_time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
-    auto board_renderer = CatchEvent(Renderer([&] {
+    while(true) {
         std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
         dt = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(time - prev_time).count()) / 1000.0f;
         prev_time = time;
@@ -223,62 +203,90 @@ int main(int argc, const char* argv[]) {
         // step the NES state forward by 'dt' seconds, or more if in fast-forward
         emulate(nes, dt);
 
-        Elements array;
         unsigned char* image = (unsigned char*)nes->ppu->front;
         generate_palette(image, nes_width, nes_height, 4);
         std::string result = encode_sixel(image, nes_width, nes_height, 4);
+
+        SetConsoleCursorPosition(output, bufferInfo.dwCursorPosition);
         printf(result.c_str());
-        array.push_back(hbox(std::move(result)));
 
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(1.0s / 120.0);// NOLINT magic numbers
+    }
+
+
+//    using namespace ftxui;
+//
+//    double dt = 0;
+//    std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> prev_time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
+//    auto board_renderer = CatchEvent(Renderer([&] {
+//        std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
+//        dt = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(time - prev_time).count()) / 1000.0f;
+//        prev_time = time;
+//
+//        // processe input
+//        nes->controller1->buttons = controller1;
+//        nes->controller2->buttons = 0;
+//
+//        // step the NES state forward by 'dt' seconds, or more if in fast-forward
+//        emulate(nes, dt);
+//
 //        Elements array;
-//        int x_length = nes_width;
-//        int y_length = nes_height;
+//        unsigned char* image = (unsigned char*)nes->ppu->front;
+//        generate_palette(image, nes_width, nes_height, 4);
+//        std::string result = encode_sixel(image, nes_width, nes_height, 4);
+//        printf(result.c_str());
+//        array.push_back(hbox(std::move(result)));
 //
-//        for (int y = 0; y < y_length; y += 2) {
-//            Elements line;
-//            for (int x = 0; x < x_length; ++x) {
-//                uint32_t c = nes->ppu->front[y * nes_width +  x];
-//                auto const blue = static_cast<uint8_t>(c >> 16U);
-//                auto const green = static_cast<uint8_t>(c >> 8U);
-//                auto const red = static_cast<uint8_t>(c);
+////        Elements array;
+////        int x_length = nes_width;
+////        int y_length = nes_height;
+////
+////        for (int y = 0; y < y_length; y += 2) {
+////            Elements line;
+////            for (int x = 0; x < x_length; ++x) {
+////                uint32_t c = nes->ppu->front[y * nes_width +  x];
+////                auto const blue = static_cast<uint8_t>(c >> 16U);
+////                auto const green = static_cast<uint8_t>(c >> 8U);
+////                auto const red = static_cast<uint8_t>(c);
+////
+////                uint32_t c2 = nes->ppu->front[(y+1) * nes_width +  x];
+////                auto const blue2 = static_cast<uint8_t>(c2 >> 16U);
+////                auto const green2 = static_cast<uint8_t>(c2 >> 8U);
+////                auto const red2 = static_cast<uint8_t>(c2);
+////
+//////                line.push_back(text(L"▀") | color(Color::RGB(red, green, blue)) | bgcolor(Color::RGB(red2, green2, blue2)));
+////                line.push_back(text(L"▀") | color(Color(red, green, blue)) | bgcolor(Color(red2, green2, blue2)));
+////            }
+////            array.push_back(hbox(std::move(line)));
+////        }
 //
-//                uint32_t c2 = nes->ppu->front[(y+1) * nes_width +  x];
-//                auto const blue2 = static_cast<uint8_t>(c2 >> 16U);
-//                auto const green2 = static_cast<uint8_t>(c2 >> 8U);
-//                auto const red2 = static_cast<uint8_t>(c2);
+//        return window(text("SimpleNES"), vbox(array));
+//    }), [&](const Event &e) {
+//        uint8_t ret = e.is_character() && "z" == e.character(); // A
+//        ret |= (e.is_character() && "x" == e.character()) << 1; // B
+//        ret |= (e == Event::Backspace) << 2;                    // Select
+//        ret |= (e == Event::Return) << 3;                       // Start
+//        ret |= (e == Event::ArrowUp) << 4;
+//        ret |= (e == Event::ArrowDown) << 5;
+//        ret |= (e == Event::ArrowLeft) << 6;
+//        ret |= (e == Event::ArrowRight) << 7;
+//        controller1 = ret;
+//        return false;
+//    });
 //
-////                line.push_back(text(L"▀") | color(Color::RGB(red, green, blue)) | bgcolor(Color::RGB(red2, green2, blue2)));
-//                line.push_back(text(L"▀") | color(Color(red, green, blue)) | bgcolor(Color(red2, green2, blue2)));
-//            }
-//            array.push_back(hbox(std::move(line)));
+//    auto screen = ScreenInteractive::FitComponent();
+//    std::atomic<bool> refresh_ui_continue = true;
+//    std::thread refresh_ui([&] {
+//        while (refresh_ui_continue) {
+//            using namespace std::chrono_literals;
+//            std::this_thread::sleep_for(1.0s / 120.0);// NOLINT magic numbers
+//            screen.PostEvent(Event::Custom);
 //        }
-
-        return window(text("SimpleNES"), vbox(array));
-    }), [&](const Event &e) {
-        uint8_t ret = e.is_character() && "z" == e.character(); // A
-        ret |= (e.is_character() && "x" == e.character()) << 1; // B
-        ret |= (e == Event::Backspace) << 2;                    // Select
-        ret |= (e == Event::Return) << 3;                       // Start
-        ret |= (e == Event::ArrowUp) << 4;
-        ret |= (e == Event::ArrowDown) << 5;
-        ret |= (e == Event::ArrowLeft) << 6;
-        ret |= (e == Event::ArrowRight) << 7;
-        controller1 = ret;
-        return false;
-    });
-
-    auto screen = ScreenInteractive::FitComponent();
-    std::atomic<bool> refresh_ui_continue = true;
-    std::thread refresh_ui([&] {
-        while (refresh_ui_continue) {
-            using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1.0s / 120.0);// NOLINT magic numbers
-            screen.PostEvent(Event::Custom);
-        }
-    });
-    screen.Loop(board_renderer);
-    refresh_ui_continue = false;
-    refresh_ui.join();
+//    });
+//    screen.Loop(board_renderer);
+//    refresh_ui_continue = false;
+//    refresh_ui.join();
 
     // save SRAM back to file
     if (nes->cartridge->battery_present) {
