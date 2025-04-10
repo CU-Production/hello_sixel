@@ -1,6 +1,8 @@
 #include <cmath>
 #include <vector>
 #include <chrono>
+#include <string>
+#include <format>
 
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/screen_interactive.hpp"
@@ -13,6 +15,110 @@
 #include "NES.h"
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
+
+#define SIXEL_START "\x1bP0;0;8q"
+//#define SIXEL_START "\x1bPq"
+#define SIXEL_END "\x1b\\"
+#define MAX_COLORS 256
+
+typedef struct {
+    uint8_t r, g, b;
+    int used;
+} ColorPalette;
+
+ColorPalette palette[MAX_COLORS];
+int palette_size = 0;
+
+int find_closest_color(uint8_t r, uint8_t g, uint8_t b) {
+    int min_dist = 255*3;
+    int index = 0;
+
+    for (int i = 0; i < palette_size; i++) {
+        int dr = abs(r - palette[i].r);
+        int dg = abs(g - palette[i].g);
+        int db = abs(b - palette[i].b);
+        int dist = dr + dg + db;
+
+        if (dist < min_dist) {
+            min_dist = dist;
+            index = i;
+        }
+    }
+    return index;
+}
+
+void generate_palette(unsigned char *data, int width, int height, int channels) {
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            int idx = (i * width + j) * channels;
+            uint8_t r = data[idx];
+            uint8_t g = data[idx + 1];
+            uint8_t b = data[idx + 2];
+
+            int found = 0;
+            for (int k = 0; k < palette_size; k++) {
+                if (palette[k].r == r && palette[k].g == g && palette[k].b == b) {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found && palette_size < MAX_COLORS) {
+                palette[palette_size].r = r;
+                palette[palette_size].g = g;
+                palette[palette_size].b = b;
+                palette_size++;
+            }
+        }
+    }
+}
+
+std::string encode_sixel(unsigned char *img, int width, int height, int channels) {
+    std::string result;
+    result += SIXEL_START;
+    result += std::format("\"1;1;{:d};{:d}", width, height);
+
+    for (int i = 0; i < palette_size; i++) {
+        result += std::format("#{:d};2;{:d};{:d};{:d}", i,
+               palette[i].r * 100 / 255,
+               palette[i].g * 100 / 255,
+               palette[i].b * 100 / 255);
+    }
+
+    for (int y = 0; y < height; y += 6) {
+        int band_height = (height - y) < 6 ? (height - y) : 6;
+
+        for (int c = 0; c < palette_size; c++) {
+            result += std::format("#{:d}", c);
+
+            for (int x = 0; x < width; x++) {
+                uint8_t sixel_byte = 0;
+
+                for (int dy = 0; dy < band_height; dy++) {
+                    int current_y = y + dy;
+                    if (current_y >= height) break;
+
+                    int idx = (current_y * width + x) * channels;
+                    uint8_t r = img[idx];
+                    uint8_t g = img[idx + 1];
+                    uint8_t b = img[idx + 2];
+
+                    int color_idx = find_closest_color(r, g, b);
+                    if (color_idx == c) {
+                        sixel_byte |= (1 << dy);
+                    }
+                }
+
+                result += char(sixel_byte + 0x3F);
+            }
+            result += "$";
+        }
+        result += "-";
+    }
+
+    result += SIXEL_END;
+    return result;
+}
 
 void audio_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
 {
@@ -79,12 +185,35 @@ int main(int argc, const char* argv[]) {
     // input
     uint8_t controller1 = 0;
 
+    //    while(true) {
+//        std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
+//        dt = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(time - prev_time).count()) / 1000.0f;
+//        prev_time = time;
+//
+//        // processe input
+//        nes->controller1->buttons = controller1;
+//        nes->controller2->buttons = 0;
+//
+//        // step the NES state forward by 'dt' seconds, or more if in fast-forward
+//        emulate(nes, dt);
+//
+//        unsigned char* image = (unsigned char*)nes->ppu->front;
+//        generate_palette(image, nes_width, nes_height, 4);
+//        std::string result = encode_sixel(image, nes_width, nes_height, 4);
+//        printf(result.c_str());
+//
+//        using namespace std::chrono_literals;
+//        std::this_thread::sleep_for(1.0s / 120.0);// NOLINT magic numbers
+//    }
+
+
     using namespace ftxui;
 
+    double dt = 0;
     std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> prev_time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
     auto board_renderer = CatchEvent(Renderer([&] {
         std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
-        const double dt = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(time - prev_time).count()) / 1000.0f;
+        dt = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(time - prev_time).count()) / 1000.0f;
         prev_time = time;
 
         // processe input
@@ -95,27 +224,34 @@ int main(int argc, const char* argv[]) {
         emulate(nes, dt);
 
         Elements array;
-        int x_length = nes_width;
-        int y_length = nes_height;
+        unsigned char* image = (unsigned char*)nes->ppu->front;
+        generate_palette(image, nes_width, nes_height, 4);
+        std::string result = encode_sixel(image, nes_width, nes_height, 4);
+        printf(result.c_str());
+        array.push_back(hbox(std::move(result)));
 
-        for (int y = 0; y < y_length; y += 2) {
-            Elements line;
-            for (int x = 0; x < x_length; ++x) {
-                uint32_t c = nes->ppu->front[y * nes_width +  x];
-                auto const blue = static_cast<uint8_t>(c >> 16U);
-                auto const green = static_cast<uint8_t>(c >> 8U);
-                auto const red = static_cast<uint8_t>(c);
-
-                uint32_t c2 = nes->ppu->front[(y+1) * nes_width +  x];
-                auto const blue2 = static_cast<uint8_t>(c2 >> 16U);
-                auto const green2 = static_cast<uint8_t>(c2 >> 8U);
-                auto const red2 = static_cast<uint8_t>(c2);
-
-//                line.push_back(text(L"▀") | color(Color::RGB(red, green, blue)) | bgcolor(Color::RGB(red2, green2, blue2)));
-                line.push_back(text(L"▀") | color(Color(red, green, blue)) | bgcolor(Color(red2, green2, blue2)));
-            }
-            array.push_back(hbox(std::move(line)));
-        }
+//        Elements array;
+//        int x_length = nes_width;
+//        int y_length = nes_height;
+//
+//        for (int y = 0; y < y_length; y += 2) {
+//            Elements line;
+//            for (int x = 0; x < x_length; ++x) {
+//                uint32_t c = nes->ppu->front[y * nes_width +  x];
+//                auto const blue = static_cast<uint8_t>(c >> 16U);
+//                auto const green = static_cast<uint8_t>(c >> 8U);
+//                auto const red = static_cast<uint8_t>(c);
+//
+//                uint32_t c2 = nes->ppu->front[(y+1) * nes_width +  x];
+//                auto const blue2 = static_cast<uint8_t>(c2 >> 16U);
+//                auto const green2 = static_cast<uint8_t>(c2 >> 8U);
+//                auto const red2 = static_cast<uint8_t>(c2);
+//
+////                line.push_back(text(L"▀") | color(Color::RGB(red, green, blue)) | bgcolor(Color::RGB(red2, green2, blue2)));
+//                line.push_back(text(L"▀") | color(Color(red, green, blue)) | bgcolor(Color(red2, green2, blue2)));
+//            }
+//            array.push_back(hbox(std::move(line)));
+//        }
 
         return window(text("SimpleNES"), vbox(array));
     }), [&](const Event &e) {
@@ -136,7 +272,7 @@ int main(int argc, const char* argv[]) {
     std::thread refresh_ui([&] {
         while (refresh_ui_continue) {
             using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1.0s / 60.0);// NOLINT magic numbers
+            std::this_thread::sleep_for(1.0s / 120.0);// NOLINT magic numbers
             screen.PostEvent(Event::Custom);
         }
     });
