@@ -225,7 +225,9 @@ int main(int argc, const char* argv[]) {
         printf(result.c_str());
 
         using namespace std::chrono_literals;
-        std::this_thread::sleep_for(1.0s / 120.0);// NOLINT magic numbers
+        double time_to_16ms = (1.0 / 60) - dt;
+        if (time_to_16ms > 0)
+            std::this_thread::sleep_for(1.0s * time_to_16ms);// NOLINT magic numbers
     }
 
     // save SRAM back to file
