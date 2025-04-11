@@ -189,12 +189,14 @@ int main(int argc, const char* argv[]) {
         dt = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(time - prev_time).count()) / 1000.0f;
         prev_time = time;
 
+        uint8_t ret = 0;
         for (int i = 0; i < 256; i++) {
-            if (GetAsyncKeyState(i) & 0b1) {
+            if ((GetAsyncKeyState(i) & 0x8000) || (GetAsyncKeyState(i) & 0b1)) {
+                // GetAsyncKeyState & 0x8000 keydown
+                // GetAsyncKeyState & 0b1    keypress
                 if (i == VK_ESCAPE)
                     running = false;
                 else {
-                    uint8_t ret = 0;
                     ret |= (i == 'z' || i == 'Z');       // A
                     ret |= (i == 'x' || i == 'X') << 1;  // B
                     ret |= (i == VK_BACK)         << 2;  // Select
@@ -203,10 +205,10 @@ int main(int argc, const char* argv[]) {
                     ret |= (i == VK_DOWN)         << 5;
                     ret |= (i == VK_LEFT)         << 6;
                     ret |= (i == VK_RIGHT)        << 7;
-                    controller1 = ret;
                 }
             }
         }
+        controller1 = ret;
 
         // processe input
         nes->controller1->buttons = controller1;
