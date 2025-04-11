@@ -1,7 +1,3 @@
-#define ENABLE_SOUND 0
-#define ENABLE_LCD 1
-#include "peanut_gb.h"
-
 #include <cmath>
 #include <vector>
 #include <string>
@@ -9,6 +5,18 @@
 #include <stdio.h>
 #include <errno.h>
 #include <windows.h>
+
+#define ENABLE_SOUND 1
+#define ENABLE_LCD   1
+uint8_t audio_read(uint16_t addr);
+void audio_write(uint16_t addr, uint8_t val);
+#include "peanut_gb.h"
+extern "C" {
+#include "minigb_apu/minigb_apu.h"
+}
+
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
 
 struct priv_t
 {
@@ -85,6 +93,20 @@ void lcd_draw_line(gb_s *gb, const uint8_t pixels[160], const uint_fast8_t line)
         priv->fb[line][x] = palette[pixels[x] & 3];
 }
 #endif
+
+static struct minigb_apu_ctx apu;
+
+uint8_t audio_read(uint16_t addr) {
+    return minigb_apu_audio_read(&apu, addr);
+}
+
+void audio_write(uint16_t addr, uint8_t val) {
+    minigb_apu_audio_write(&apu, addr, val);
+}
+
+void audio_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+    minigb_apu_audio_callback(&apu, (int*)pOutput);
+}
 
 #pragma region sixel
 #define SIXEL_START "\x1bPq"
@@ -227,6 +249,33 @@ int main(int argc, char **argv)
     CONSOLE_SCREEN_BUFFER_INFO bufferInfo;
     GetConsoleScreenBufferInfo(output, &bufferInfo);
 
+    // init miniaudio
+    ma_device_config deviceConfig;
+    ma_device device;
+
+    deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format = ma_format_s32;
+    deviceConfig.playback.channels = 2;
+    deviceConfig.sampleRate = AUDIO_SAMPLE_RATE;
+    deviceConfig.periodSizeInFrames = AUDIO_SAMPLES;
+//    deviceConfig.noFixedSizedCallback = false;
+//    deviceConfig.periodSizeInFrames = 64;
+    deviceConfig.dataCallback = audio_callback;
+    deviceConfig.pUserData = (void*)&apu;
+
+    if (ma_device_init(nullptr, &deviceConfig, &device) != MA_SUCCESS) {
+        fprintf(stderr, "Failed to open playback device.");
+        return EXIT_FAILURE;
+    }
+
+    if (ma_device_start(&device) != MA_SUCCESS) {
+        fprintf(stderr, "Failed to start playback device.");
+        ma_device_uninit(&device);
+        return EXIT_FAILURE;
+    }
+
+    minigb_apu_audio_init(&apu);
+
     double dt = 0;
     bool running = true;
     std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> prev_time{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
@@ -256,7 +305,6 @@ int main(int argc, char **argv)
                     gb.direct.frame_skip = (i == VK_SPACE);
 //                    gb.direct.interlace = (i == 'i' || i == 'I');
 #endif
-
                 }
             }
         }
@@ -276,6 +324,7 @@ int main(int argc, char **argv)
             std::this_thread::sleep_for(1.0s * time_to_16ms);// NOLINT magic numbers
     }
 
+    ma_device_uninit(&device);
 	free(priv.cart_ram);
 	free(priv.rom);
 
