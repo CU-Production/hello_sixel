@@ -165,25 +165,12 @@ int main(int argc, char **args)
 
         doom_update();
 
+        const unsigned char* image = doom_get_framebuffer(3);
+        generate_palette(image, SCREENWIDTH, SCREENHEIGHT, 3);
+        result = encode_sixel(image, SCREENWIDTH, SCREENHEIGHT, 3);
+
         SetConsoleCursorPosition(output, bufferInfo.dwCursorPosition);
         printf(result.c_str());
-
-        std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> now1{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
-        const unsigned char* image = doom_get_framebuffer(3);
-        std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> now2{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
-        generate_palette(image, SCREENWIDTH, SCREENHEIGHT, 3);
-        std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> now3{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
-        result = encode_sixel(image, SCREENWIDTH, SCREENHEIGHT, 3);
-        std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds> now4{std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())};
-
-        double t1 = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(now2 - now1).count()) / 1000.0f;
-        double t2 = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(now3 - now2).count()) / 1000.0f;
-        double t3 = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(now4 - now3).count()) / 1000.0f;
-
-        printf("palette_size: %d\n", palette_size);
-        printf("doom_get_framebuffer: %f\n", t1);
-        printf("generate_palette: %f\n", t2);
-        printf("encode_sixel: %f\n", t3);
     }
 
     return EXIT_SUCCESS;
