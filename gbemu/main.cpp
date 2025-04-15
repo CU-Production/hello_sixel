@@ -105,7 +105,7 @@ void audio_write(uint16_t addr, uint8_t val) {
 }
 
 void audio_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    minigb_apu_audio_callback(&apu, (int*)pOutput);
+    minigb_apu_audio_callback(&apu, (audio_sample_t*)pOutput);
 }
 
 #pragma region sixel
@@ -254,7 +254,7 @@ int main(int argc, char **argv)
     ma_device device;
 
     deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format = ma_format_s32;
+    deviceConfig.playback.format = ma_format_s16;
     deviceConfig.playback.channels = 2;
     deviceConfig.sampleRate = AUDIO_SAMPLE_RATE;
     deviceConfig.periodSizeInFrames = AUDIO_SAMPLES;
