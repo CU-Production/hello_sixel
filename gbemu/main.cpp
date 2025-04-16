@@ -15,8 +15,8 @@ extern "C" {
 #include "minigb_apu/minigb_apu.h"
 }
 
-#define MINIAUDIO_IMPLEMENTATION
-#include "miniaudio.h"
+#define SOKOL_AUDIO_IMPL
+#include "sokol_audio.h"
 
 struct priv_t
 {
@@ -104,8 +104,12 @@ void audio_write(uint16_t addr, uint8_t val) {
     minigb_apu_audio_write(&apu, addr, val);
 }
 
-void audio_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    minigb_apu_audio_callback(&apu, (audio_sample_t*)pOutput);
+audio_sample_t tmp_apu_buffer[AUDIO_SAMPLES_TOTAL];
+void audio_callback(float* buffer, int num_frames, int num_channels) {
+    minigb_apu_audio_callback(&apu, tmp_apu_buffer);
+    for (int i = 0; i < AUDIO_SAMPLES_TOTAL; i++) {
+        buffer[i] = tmp_apu_buffer[i] / float(0x7FFF);
+    }
 }
 
 #pragma region sixel
@@ -249,30 +253,14 @@ int main(int argc, char **argv)
     CONSOLE_SCREEN_BUFFER_INFO bufferInfo;
     GetConsoleScreenBufferInfo(output, &bufferInfo);
 
-    // init miniaudio
-    ma_device_config deviceConfig;
-    ma_device device;
-
-    deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format = ma_format_s16;
-    deviceConfig.playback.channels = 2;
-    deviceConfig.sampleRate = AUDIO_SAMPLE_RATE;
-    deviceConfig.periodSizeInFrames = AUDIO_SAMPLES;
-//    deviceConfig.noFixedSizedCallback = false;
-//    deviceConfig.periodSizeInFrames = 64;
-    deviceConfig.dataCallback = audio_callback;
-    deviceConfig.pUserData = (void*)&apu;
-
-    if (ma_device_init(nullptr, &deviceConfig, &device) != MA_SUCCESS) {
-        fprintf(stderr, "Failed to open playback device.");
-        return EXIT_FAILURE;
-    }
-
-    if (ma_device_start(&device) != MA_SUCCESS) {
-        fprintf(stderr, "Failed to start playback device.");
-        ma_device_uninit(&device);
-        return EXIT_FAILURE;
-    }
+    // Setup sokol-audio
+    saudio_desc as_desc = {};
+//    as_desc.logger.func = slog_func;
+    as_desc.sample_rate = AUDIO_SAMPLE_RATE;
+    as_desc.num_channels = 2;
+    as_desc.stream_cb = audio_callback;
+    as_desc.buffer_frames = 1024;
+    saudio_setup(&as_desc);
 
     minigb_apu_audio_init(&apu);
 
@@ -324,7 +312,7 @@ int main(int argc, char **argv)
             std::this_thread::sleep_for(1.0s * time_to_16ms);// NOLINT magic numbers
     }
 
-    ma_device_uninit(&device);
+    saudio_shutdown();
 	free(priv.cart_ram);
 	free(priv.rom);
 
