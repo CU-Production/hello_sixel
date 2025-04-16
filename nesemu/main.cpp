@@ -6,8 +6,8 @@
 #include <windows.h>
 
 #include "NES.h"
-#define MINIAUDIO_IMPLEMENTATION
-#include "miniaudio.h"
+#define SOKOL_AUDIO_IMPL
+#include "sokol_audio.h"
 
 #define SIXEL_START "\x1bPq"
 #define SIXEL_END   "\x1b\\"
@@ -112,25 +112,19 @@ std::string encode_sixel(unsigned char *img, int width, int height, int channels
     return result;
 }
 
-void audio_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
-{
-    auto apu = (APU*)pDevice->pUserData;
-    if (apu == nullptr) {
-        return;
-    }
+void audio_callback(float* buffer, int num_frames, int num_channels, void* user_data) {
+    NES* nes = (NES*)user_data;
 
-    auto* outStream = (float*) pOutput;
-
-    apu->streamMutex.lock();
-    for (int i = 0; i < frameCount; i++) {
-        if (i < apu->stream.size()) {
-            float tmp = apu->stream.front();
-            outStream[i * 2 + 0] = tmp;
-            outStream[i * 2 + 1] = tmp;
-            apu->stream.erase(apu->stream.begin());
+    nes->apu->streamMutex.lock();
+    for (int i = 0; i < num_frames; i++) {
+        if (i < nes->apu->stream.size()) {
+            // buffer[i*2+0] = nes->apu->stream.front();
+            // buffer[i*2+1] = nes->apu->stream.front();
+            buffer[i] = nes->apu->stream.front();
+            nes->apu->stream.erase(nes->apu->stream.begin());
         }
     }
-    apu->streamMutex.unlock();
+    nes->apu->streamMutex.unlock();
 }
 
 constexpr auto nes_width  = 256;
@@ -150,29 +144,15 @@ int main(int argc, const char* argv[]) {
     NES* nes = new NES(argv[1], SRAM_path);
     if (!nes->initialized) return EXIT_FAILURE;
 
-    // init miniaudio
-    ma_device_config deviceConfig;
-    ma_device device;
-
-    deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format = ma_format_f32;
-    deviceConfig.playback.channels = 2;
-    deviceConfig.sampleRate = 44100;
-//    deviceConfig.noFixedSizedCallback = false;
-//    deviceConfig.periodSizeInFrames = 64;
-    deviceConfig.dataCallback = audio_callback;
-    deviceConfig.pUserData = nes->apu;
-
-    if (ma_device_init(nullptr, &deviceConfig, &device) != MA_SUCCESS) {
-        std::cout << "Failed to open playback device." << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    if (ma_device_start(&device) != MA_SUCCESS) {
-        std::cout << "Failed to start playback device." << std::endl;
-        ma_device_uninit(&device);
-        return EXIT_FAILURE;
-    }
+    saudio_desc as_desc = {};
+//    as_desc.logger.func = slog_func;
+    as_desc.buffer_frames = 1024;
+    // as_desc.num_channels = 2;
+    as_desc.stream_userdata_cb = audio_callback;
+    as_desc.user_data = nes;
+    saudio_setup(&as_desc);
+    assert(as_desc.user_data);
+    assert(saudio_channels() == 1);
 
     HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_SCREEN_BUFFER_INFO bufferInfo;
@@ -242,7 +222,7 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    ma_device_uninit(&device);
+    saudio_shutdown();
 
     return 0;
 }
